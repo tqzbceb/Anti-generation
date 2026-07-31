@@ -3,7 +3,15 @@
 透明反代 `https://api.browser-use.com`，自动从 key 池轮换注入 `X-Browser-Use-API-Key`。
 挂了（401/402/403）自动冷却 5 分钟，限流（429）冷却 1 分钟，自动换下一个重试。
 
-## 快速开始
+## 免终端启动（推荐）
+
+- **Windows**：双击 `start-windows.bat`
+- **Mac**：双击 `start-mac.command`（首次若被系统拦：右键 → 打开）
+
+启动器会自动检查 Python、装依赖、发现 keys.txt 没填真 key 时帮你打开它，然后启动代理。
+窗口最小化即可挂着跑，**关闭窗口 = 停止代理**。
+
+## 手动启动（终端）
 
 ```bash
 pip install -r requirements.txt
