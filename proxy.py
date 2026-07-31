@@ -19,6 +19,8 @@ import time
 import httpx
 import uvicorn
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.routing import Route
@@ -256,12 +258,16 @@ async def chat_completions(request: Request):
     })
 
 
-app = Starlette(routes=[
-    Route("/health", health, methods=["GET"]),
-    Route("/v1/models", list_models, methods=["GET"]),
-    Route("/v1/chat/completions", chat_completions, methods=["POST"]),
-    Route("/{path:path}", proxy, methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]),
-])
+app = Starlette(
+    routes=[
+        Route("/health", health, methods=["GET"]),
+        Route("/v1/models", list_models, methods=["GET"]),
+        Route("/v1/chat/completions", chat_completions, methods=["POST"]),
+        Route("/{path:path}", proxy, methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]),
+    ],
+    # 允许本地面板(file:// 打开的 task-panel.html)等网页直接调用
+    middleware=[Middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])],
+)
 
 if __name__ == "__main__":
     print(f"listening on 0.0.0.0:{PORT}  upstream={UPSTREAM}  mode={AUTH_MODE}  keys={len(pool.keys)}")

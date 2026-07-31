@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser Use 任务面板</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+         background: #f3f5f7; color: #1c2333; min-height: 100vh; padding: 24px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #667; font-size: 13px; margin-bottom: 18px; }
+  .card { background: #fff; border-radius: 12px; padding: 18px 20px;
+          box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 16px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  label { font-size: 13px; color: #556; }
+  input[type=text], input[type=password], select {
+    padding: 8px 10px; border: 1px solid #d5dbe3; border-radius: 8px; font-size: 14px; }
+  input[type=text] { flex: 1; min-width: 220px; }
+  textarea { width: 100%; min-height: 120px; margin-top: 8px; padding: 12px;
+             border: 1px solid #d5dbe3; border-radius: 8px; font-size: 15px;
+             font-family: inherit; resize: vertical; }
+  button { padding: 9px 22px; border: 0; border-radius: 8px; font-size: 15px;
+           cursor: pointer; background: #2563eb; color: #fff; }
+  button:disabled { background: #9db7e8; cursor: wait; }
+  button.ghost { background: #eef1f5; color: #334; padding: 7px 14px; font-size: 13px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .ok { background: #22c55e; } .bad { background: #ef4444; } .wait { background: #f59e0b; }
+  #status { font-size: 14px; margin: 10px 0; color: #445; min-height: 20px; }
+  #result { white-space: pre-wrap; word-break: break-word; font-size: 15px; line-height: 1.7;
+            background: #f8fafc; border: 1px solid #e5eaf0; border-radius: 8px;
+            padding: 14px; min-height: 60px; }
+  .meta { font-size: 12px; color: #889; margin-top: 10px; }
+  .hidden { display: none; }
+  .spin { display: inline-block; animation: r 1s linear infinite; }
+  @keyframes r { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Browser Use 任务面板</h1>
+  <div class="sub">输入一句话任务,云端浏览器自动去执行。走本地反代 + key 池,无需命令行。</div>
+
+  <div class="card">
+    <div class="row">
+      <label>代理地址</label>
+      <input type="text" id="base" placeholder="http://127.0.0.1:8787">
+      <label>访问令牌(没设就留空)</label>
+      <input type="password" id="token" style="max-width:150px">
+      <button class="ghost" id="checkBtn">检查连接</button>
+    </div>
+    <div id="conn" style="margin-top:10px;font-size:13px;color:#667">尚未检查连接</div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <label>模型</label>
+      <select id="model"><option value="grok-4.5">grok-4.5</option></select>
+    </div>
+    <textarea id="task" placeholder="例如: 打开 example.com,告诉我页面标题是什么"></textarea>
+    <div class="row" style="margin-top:12px">
+      <button id="go">提交任务</button>
+      <span id="status"></span>
+    </div>
+  </div>
+
+  <div class="card hidden" id="resultCard">
+    <label>执行结果</label>
+    <div id="result" style="margin-top:8px"></div>
+    <div class="meta" id="meta"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+$("base").value = localStorage.getItem("bu_base") || "http://127.0.0.1:8787";
+$("token").value = localStorage.getItem("bu_token") || "";
+
+function saveCfg() {
+  localStorage.setItem("bu_base", $("base").value.trim());
+  localStorage.setItem("bu_token", $("token").value.trim());
+}
+function base() { return $("base").value.trim().replace(/\/+$/, ""); }
+function hdrs() {
+  const h = { "Content-Type": "application/json" };
+  if ($("token").value.trim()) h["Authorization"] = "Bearer " + $("token").value.trim();
+  return h;
+}
+
+async function check() {
+  saveCfg();
+  const el = $("conn");
+  try {
+    const r = await fetch(base() + "/health", { headers: hdrs() });
+    const d = await r.json();
+    el.innerHTML = `<span class="dot ok"></span>已连接 · 池内 key 总数 ${d.pool.total} · 当前可用 ${d.pool.active}`;
+    loadModels();
+  } catch (e) {
+    el.innerHTML = `<span class="dot bad"></span>连不上代理 —— 反代程序启动了吗?地址对吗?`;
+  }
+}
+
+async function loadModels() {
+  try {
+    const r = await fetch(base() + "/v1/models", { headers: hdrs() });
+    const d = await r.json();
+    $("model").innerHTML = d.data.map(m =>
+      `<option value="${m.id}" ${m.id === "grok-4.5" ? "selected" : ""}>${m.id}</option>`).join("");
+  } catch (e) {}
+}
+
+let polling = null;
+async function submit() {
+  saveCfg();
+  const task = $("task").value.trim();
+  if (!task) { $("status").textContent = "先输入任务内容"; return; }
+  $("go").disabled = true;
+  $("resultCard").classList.add("hidden");
+  $("status").innerHTML = `<span class="dot wait"></span><span class="spin">⏳</span> 创建任务中...`;
+  try {
+    const r = await fetch(base() + "/api/v4/runs", {
+      method: "POST", headers: hdrs(),
+      body: JSON.stringify({ task, model: $("model").value })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.id) throw new Error(d.error || JSON.stringify(d));
+    poll(d.id, Date.now());
+  } catch (e) {
+    $("status").innerHTML = `<span class="dot bad"></span>提交失败: ${e.message}`;
+    $("go").disabled = false;
+  }
+}
+
+async function poll(id, t0) {
+  try {
+    const s = await (await fetch(`${base()}/api/v4/runs/${id}/status`, { headers: hdrs() })).json();
+    const sec = Math.round((Date.now() - t0) / 1000);
+    const map = { queued: "排队中", dispatching: "分配资源中", running: "浏览器执行中" };
+    if (["completed", "failed", "cancelled"].includes(s.status)) {
+      const full = await (await fetch(`${base()}/api/v4/runs/${id}`, { headers: hdrs() })).json();
+      $("resultCard").classList.remove("hidden");
+      if (full.status === "completed" && full.result) {
+        $("status").innerHTML = `<span class="dot ok"></span>完成,耗时 ${sec}s`;
+        $("result").textContent = full.result;
+      } else {
+        $("status").innerHTML = `<span class="dot bad"></span>任务${full.status}`;
+        $("result").textContent = full.error || "(无结果)";
+      }
+      $("meta").textContent =
+        `模型 ${full.model || "-"} · 输入token ${full.totalInputTokens ?? "-"} · 输出token ${full.totalOutputTokens ?? "-"} · 花费 $${full.totalCostUsd ?? "-"}`;
+      $("go").disabled = false;
+      return;
+    }
+    $("status").innerHTML = `<span class="dot wait"></span><span class="spin">⏳</span> ${map[s.status] || s.status} · 已等 ${sec}s(云端跑浏览器需要几分钟,耐心等)`;
+    polling = setTimeout(() => poll(id, t0), 5000);
+  } catch (e) {
+    $("status").innerHTML = `<span class="dot bad"></span>查询出错: ${e.message}`;
+    $("go").disabled = false;
+  }
+}
+
+$("checkBtn").onclick = check;
+$("go").onclick = submit;
+check();
+</script>
+</body>
+</html>
