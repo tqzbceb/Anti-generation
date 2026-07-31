@@ -21,10 +21,21 @@
         "apiKey": "sk-anything"
       },
       "models": {
-        "grok-4.5": { "name": "BU grok-4.5" },
-        "gpt-5.5": { "name": "BU gpt-5.5" },
-        "claude-sonnet-5": { "name": "BU claude-sonnet-5" },
-        "kimi-k3": { "name": "BU kimi-k3" }
+        "kimi-k3":          { "name": "BU Kimi (kimi-k3)" },
+        "glm-5.2":          { "name": "BU GLM (glm-5.2)" },
+        "grok-4.5":         { "name": "BU Grok (grok-4.5)" },
+        "minimax-m3":       { "name": "BU MiniMax (minimax-m3)" },
+        "claude-opus-4.7":  { "name": "BU Claude Opus 4.7" },
+        "claude-opus-4.8":  { "name": "BU Claude Opus 4.8" },
+        "claude-opus-5":    { "name": "BU Claude Opus 5" },
+        "claude-fable-5":   { "name": "BU Claude Fable 5" },
+        "claude-sonnet-5":  { "name": "BU Claude Sonnet 5" },
+        "gpt-5.5":          { "name": "BU GPT 5.5" },
+        "gpt-5.6":          { "name": "BU GPT 5.6" },
+        "gemini-3.6-flash": { "name": "BU Gemini 3.6 Flash" },
+        "gemini-3.5-flash": { "name": "BU Gemini 3.5 Flash" },
+        "gemini-3.1-pro":   { "name": "BU Gemini 3.1 Pro" },
+        "gemini-3-flash":   { "name": "BU Gemini 3 Flash" }
       }
     }
   }

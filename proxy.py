@@ -169,7 +169,7 @@ VALID_MODELS = [
     "glm-5.2", "grok-4.5", "kimi-k3", "minimax-m3",
     "claude-opus-4.7", "claude-opus-4.8", "claude-opus-5", "claude-fable-5", "claude-sonnet-5",
     "gpt-5.5", "gpt-5.6",
-    "gemini-3.5-flash", "gemini-3.1-pro", "gemini-3-flash",
+    "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-pro", "gemini-3-flash",
 ]
 
 CHAT_PREAMBLE = (
