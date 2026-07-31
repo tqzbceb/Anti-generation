@@ -3,6 +3,8 @@ chcp 65001 >nul
 cd /d "%~dp0"
 title Browser Use Proxy - 关闭此窗口即停止
 
+if not exist keys.txt copy keys.example.txt keys.txt >nul
+
 where python >nul 2>nul
 if errorlevel 1 (
     echo [ERROR] Python not found. Install from https://www.python.org/downloads/

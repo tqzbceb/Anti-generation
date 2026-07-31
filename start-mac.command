@@ -2,6 +2,8 @@
 # Browser Use Proxy launcher - double click to run. Closing window stops proxy.
 cd "$(dirname "$0")"
 
+[ -f keys.txt ] || cp keys.example.txt keys.txt
+
 if ! command -v python3 >/dev/null 2>&1; then
     echo "[ERROR] python3 not found. Install from https://www.python.org/downloads/"
     read -r
