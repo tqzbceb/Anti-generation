@@ -12,6 +12,7 @@ Browser Use Cloud API 反向代理 + key 池轮换
 """
 
 import asyncio
+import json
 import os
 import time
 
@@ -136,8 +137,129 @@ async def proxy(request: Request):
     return JSONResponse({"error": "all keys unavailable or retries exhausted"}, status_code=last_status)
 
 
+# ---------- OpenAI 兼容适配层 (转接层) ----------
+# 把 /v1/chat/completions 包装成 Browser Use 的 agent run, 让 opencode/ChatBox 等工具能用
+
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "grok-4.5")  # 官方文档推荐的性价比款
+CHAT_TIMEOUT = int(os.getenv("CHAT_TIMEOUT", "600"))    # 单次对话最长等多久(秒), agent 跑得慢
+VALID_MODELS = [
+    "glm-5.2", "grok-4.5", "kimi-k3", "minimax-m3",
+    "claude-opus-4.7", "claude-opus-4.8", "claude-opus-5", "claude-fable-5", "claude-sonnet-5",
+    "gpt-5.5", "gpt-5.6",
+    "gemini-3.5-flash", "gemini-3.1-pro", "gemini-3-flash",
+]
+
+CHAT_PREAMBLE = (
+    "You are answering a chat conversation from an API client. "
+    "Do NOT browse the web unless the request truly requires it. "
+    "Answer directly and return only the final reply text.\n\n"
+)
+
+
+def flatten_messages(messages: list) -> str:
+    parts = []
+    for m in messages:
+        content = m.get("content", "")
+        if isinstance(content, list):  # OpenAI 多段格式
+            content = "\n".join(p.get("text", "") for p in content
+                                if isinstance(p, dict) and p.get("type") == "text")
+        parts.append(f"[{m.get('role', 'user').capitalize()}]\n{content}")
+    return CHAT_PREAMBLE + "\n\n".join(parts)
+
+
+async def upstream_json(method: str, path: str, key: str, body: dict | None = None) -> httpx.Response:
+    return await client.request(method, UPSTREAM + path,
+                                headers={"X-Browser-Use-API-Key": key}, json=body)
+
+
+async def run_as_chat(task_text: str, model: str) -> tuple[str, dict]:
+    """创建 run 并轮询到结束, 返回 (结果文本, 完整run数据)"""
+    last_err = "no available key"
+    for _ in range(MAX_TRIES):
+        key = await pool.acquire()
+        if key is None:
+            break
+        r = await upstream_json("POST", "/api/v4/runs", key, {"task": task_text, "model": model})
+        if r.status_code in (401, 402, 403, 429):
+            pool.punish(key, 60 if r.status_code == 429 else 300)
+            print(f"[pool] key {mask(key)} -> {r.status_code}, cooldown")
+            last_err = f"key rejected: {r.status_code}"
+            continue
+        if r.status_code != 200:
+            last_err = f"create run failed {r.status_code}: {r.text[:300]}"
+            continue
+
+        run_id = r.json()["id"]
+        deadline = time.time() + CHAT_TIMEOUT
+        status = "queued"
+        while time.time() < deadline:
+            await asyncio.sleep(3)
+            s = await upstream_json("GET", f"/api/v4/runs/{run_id}/status", key)
+            status = s.json().get("status", "")
+            if status in ("completed", "failed", "cancelled"):
+                break
+
+        full = await upstream_json("GET", f"/api/v4/runs/{run_id}", key)
+        data = full.json()
+        if data.get("status") == "completed" and data.get("result"):
+            return data["result"], data
+        last_err = data.get("error") or f"run ended with status: {status}"
+        break  # run 级别的失败与 key 无关, 不重试
+    raise RuntimeError(last_err)
+
+
+async def list_models(request: Request):
+    return JSONResponse({"object": "list", "data": [
+        {"id": m, "object": "model", "created": 0, "owned_by": "browser-use"} for m in VALID_MODELS
+    ]})
+
+
+async def chat_completions(request: Request):
+    if PROXY_TOKEN and request.headers.get("authorization") != f"Bearer {PROXY_TOKEN}":
+        return JSONResponse({"error": {"message": "invalid proxy token"}}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": {"message": "invalid JSON body"}}, status_code=400)
+
+    messages = body.get("messages") or []
+    if not messages:
+        return JSONResponse({"error": {"message": "messages is required"}}, status_code=400)
+    model = body.get("model") or DEFAULT_MODEL
+    if model not in VALID_MODELS:
+        model = DEFAULT_MODEL
+
+    try:
+        result, meta = await run_as_chat(flatten_messages(messages), model)
+    except RuntimeError as e:
+        return JSONResponse({"error": {"message": str(e), "type": "server_error"}}, status_code=502)
+
+    cid = "chatcmpl-" + meta.get("id", "x").replace("-", "")[:24]
+    created = int(time.time())
+    usage = {
+        "prompt_tokens": meta.get("totalInputTokens") or 0,
+        "completion_tokens": meta.get("totalOutputTokens") or 0,
+        "total_tokens": (meta.get("totalInputTokens") or 0) + (meta.get("totalOutputTokens") or 0),
+    }
+
+    if body.get("stream"):
+        async def sse():
+            yield f'data: {{"id":"{cid}","object":"chat.completion.chunk","created":{created},"model":"{model}","choices":[{{"index":0,"delta":{{"role":"assistant","content":{json.dumps(result)}}},"finish_reason":null}}]}}\n\n'
+            yield f'data: {{"id":"{cid}","object":"chat.completion.chunk","created":{created},"model":"{model}","choices":[{{"index":0,"delta":{{}},"finish_reason":"stop"}}]}}\n\n'
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(sse(), media_type="text/event-stream")
+
+    return JSONResponse({
+        "id": cid, "object": "chat.completion", "created": created, "model": model,
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": result}, "finish_reason": "stop"}],
+        "usage": usage,
+    })
+
+
 app = Starlette(routes=[
     Route("/health", health, methods=["GET"]),
+    Route("/v1/models", list_models, methods=["GET"]),
+    Route("/v1/chat/completions", chat_completions, methods=["POST"]),
     Route("/{path:path}", proxy, methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]),
 ])
 
