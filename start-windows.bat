@@ -5,6 +5,16 @@ title Browser Use Proxy
 
 if not exist keys.txt copy keys.example.txt keys.txt >nul
 
+rem Port 8787 already occupied = an old instance is still running.
+rem Kill it and restart fresh (double-click = restart with latest keys.txt).
+netstat -ano | findstr ":8787 " | findstr LISTENING >nul
+if not errorlevel 1 (
+    echo [INFO] Port 8787 already in use - an old proxy instance is running.
+    echo        Stopping it and restarting with your current keys.txt ...
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8787 " ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>nul
+    timeout /t 2 /nobreak >nul
+)
+
 where python >nul 2>nul
 if errorlevel 1 (
     echo [ERROR] Python not found. Install from https://www.python.org/downloads/
