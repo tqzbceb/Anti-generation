@@ -20,8 +20,8 @@ if ! python3 -c "import httpx, starlette, uvicorn" 2>/dev/null; then
 fi
 
 if ! grep "^bu_" keys.txt | grep -qv "xxxx"; then
-    echo "[WARN] keys.txt has no real key yet. Opening it..."
-    open -e keys.txt 2>/dev/null
+    echo "[SETUP] Editor will open. Paste your keys, SAVE, then CLOSE it to continue."
+    open -W -e keys.txt 2>/dev/null
 fi
 
 echo ""
