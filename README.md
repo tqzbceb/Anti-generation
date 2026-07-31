@@ -6,7 +6,25 @@
 **内置 OpenAI 兼容转接层**（`/v1/chat/completions`、`/v1/models`）：把聊天请求包装成 Browser Use 的 agent run，
 让 opencode、ChatBox、Cherry Studio 等工具可以直接使用这批 key（就是别人做的那种"转接"）。
 
-## 接到 opencode
+## 接到 opencode（方式一：MCP 浏览器工具，推荐）
+
+opencode 原生支持 MCP。挂上官方 MCP 服务器后，agent 写代码时能直接调用云端浏览器
+（查文档、抓页面、测试网站），工具：run_session / send_task / get_session / stop_session 等。
+
+```json
+"mcp": {
+  "browser-use": {
+    "type": "remote",
+    "url": "https://api.browser-use.com/v3/mcp",
+    "headers": { "x-browser-use-api-key": "bu_填一个真key" }
+  }
+}
+```
+
+**注意：MCP 不要走本反代的 key 池。** MCP 会话有状态、绑定创建它的 key，轮换会导致会话断裂。
+固定填一个真 key，额度跑完手动换一个即可。
+
+## 接到 opencode（方式二：当聊天模型用，体验打折）
 
 `opencode.json` 加自定义 provider：
 
