@@ -96,6 +96,27 @@ async def health(request: Request):
     return JSONResponse({"upstream": UPSTREAM, "auth_mode": AUTH_MODE, "pool": pool.stats()})
 
 
+async def index(request: Request):
+    """根路径说明页, 避免访问 / 看到上游的 404 以为出错"""
+    s = pool.stats()
+    html = f"""<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>BU 反代</title>
+<style>body{{font-family:"Microsoft YaHei",system-ui,sans-serif;background:#f3f5f7;display:flex;justify-content:center;padding-top:60px}}
+.card{{background:#fff;border-radius:14px;padding:32px 40px;box-shadow:0 2px 10px rgba(0,0,0,.08);max-width:520px}}
+h1{{font-size:20px}} .ok{{color:#16a34a}} li{{margin:8px 0;font-size:15px}} a{{color:#2563eb}}</style></head>
+<body><div class="card">
+<h1>✅ 反代运行中 <span class="ok">(这不是错误页面)</span></h1>
+<p>上游: {UPSTREAM} · key 池: 共 {s['total']} 个, 当前可用 {s['active']} 个</p>
+<ul>
+<li><a href="/health">/health</a> — key 池状态 (JSON)</li>
+<li><a href="/v1/models">/v1/models</a> — OpenAI 兼容模型列表</li>
+<li>/api/v4/... — 透明转发到官方 API (给程序用)</li>
+</ul>
+<p>日常用请直接双击 <b>task-panel.html</b> 打开图形面板。</p>
+</div></body></html>"""
+    from starlette.responses import HTMLResponse
+    return HTMLResponse(html)
+
+
 async def proxy(request: Request):
     if PROXY_TOKEN and request.headers.get("authorization") != f"Bearer {PROXY_TOKEN}":
         return JSONResponse({"error": "invalid proxy token"}, status_code=401)
@@ -260,6 +281,7 @@ async def chat_completions(request: Request):
 
 app = Starlette(
     routes=[
+        Route("/", index, methods=["GET"]),
         Route("/health", health, methods=["GET"]),
         Route("/v1/models", list_models, methods=["GET"]),
         Route("/v1/chat/completions", chat_completions, methods=["POST"]),
