@@ -1,0 +1,31 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "mcp": {
+    "browser-use": {
+      "type": "remote",
+      "url": "https://api.browser-use.com/v3/mcp",
+      "oauth": false,
+      "headers": {
+        "x-browser-use-api-key": "bu_把这里换成一个真key"
+      }
+    }
+  },
+
+  "provider": {
+    "browseruse": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "BrowserUse",
+      "options": {
+        "baseURL": "http://127.0.0.1:8787/v1",
+        "apiKey": "sk-anything"
+      },
+      "models": {
+        "grok-4.5": { "name": "BU grok-4.5" },
+        "gpt-5.5": { "name": "BU gpt-5.5" },
+        "claude-sonnet-5": { "name": "BU claude-sonnet-5" },
+        "kimi-k3": { "name": "BU kimi-k3" }
+      }
+    }
+  }
+}
